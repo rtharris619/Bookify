@@ -6,4 +6,4 @@ using System.Threading.Tasks;
 
 namespace Bookify.Domain.Apartments;
 
-public record Address(string Country, string Province, string PostalCode, string City, string Street);
+public record Address(string Country, string State, string ZipCode, string City, string Street);

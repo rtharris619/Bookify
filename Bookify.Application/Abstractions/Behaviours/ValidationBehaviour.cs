@@ -15,7 +15,7 @@ public class ValidationBehaviour<TRequest, TResponse> : IPipelineBehavior<TReque
 
     public async Task<TResponse> Handle(TRequest request, RequestHandlerDelegate<TResponse> next, CancellationToken cancellationToken)
     {
-        if (_validators.Any())
+        if (!_validators.Any())
         {
             return await next();
         }
@@ -29,7 +29,7 @@ public class ValidationBehaviour<TRequest, TResponse> : IPipelineBehavior<TReque
             .Select(failure => new ValidationError(failure.PropertyName, failure.ErrorMessage))
             .ToList();
 
-        if (validationErrors.Count == 0)
+        if (validationErrors.Count > 0)
         {
             throw new Exceptions.ValidationException(validationErrors);
         }
