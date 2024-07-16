@@ -7,16 +7,22 @@ using Bookify.Domain.Apartments;
 using Bookify.Domain.Bookings;
 using Bookify.Domain.Users;
 using Bookify.Infrastructure.Authentication;
+using Bookify.Infrastructure.Authorisation;
 using Bookify.Infrastructure.Clock;
 using Bookify.Infrastructure.Data;
 using Bookify.Infrastructure.Email;
 using Bookify.Infrastructure.Repositories;
 using Dapper;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using AuthenticationOptions = Bookify.Infrastructure.Authentication.AuthenticationOptions;
+using AuthenticationService = Bookify.Infrastructure.Authentication.AuthenticationService;
+using IAuthenticationService = Bookify.Application.Abstractions.Authentication.IAuthenticationService;
 
 namespace Bookify.Infrastructure;
 
@@ -29,29 +35,9 @@ public static class DependencyInjection
 
         AddPersistence(services, configuration);
 
-        services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-            .AddJwtBearer();
+        AddAuthentication(services, configuration);
 
-        services.Configure<AuthenticationOptions>(configuration.GetSection("Authentication"));
-
-        services.ConfigureOptions<JwtBearerOptionsSetup>();
-
-        services.Configure<KeycloakOptions>(configuration.GetSection("Keycloak"));
-
-        services.AddTransient<AdminAuthorisationDelegatingHandler>();
-
-        services.AddHttpClient<IAuthenticationService, AuthenticationService>((serviceProvider, httpClient) =>
-        {
-            var keyCloakOptions = serviceProvider.GetRequiredService<IOptions<KeycloakOptions>>().Value;
-            httpClient.BaseAddress = new Uri(keyCloakOptions.AdminUrl);
-        }).AddHttpMessageHandler<AdminAuthorisationDelegatingHandler>();
-
-        //services.AddHttpClient<IJwtService, JwtService>((serviceProvider, httpClient) =>
-        //{
-        //    KeycloakOptions keycloakOptions = serviceProvider.GetRequiredService<IOptions<KeycloakOptions>>().Value;
-
-        //    httpClient.BaseAddress = new Uri(keycloakOptions.TokenUrl);
-        //});
+        AddAuthorisation(services);
 
         return services;
     }
@@ -77,5 +63,47 @@ public static class DependencyInjection
         // Dapper Configuration
         services.AddSingleton<ISqlConnectionFactory>(_ => new SqlConnectionFactory(connectionString));
         SqlMapper.AddTypeHandler(new DateOnlyTypeHandler());
+    }
+
+    private static void AddAuthentication(IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+            .AddJwtBearer();
+
+        services.Configure<AuthenticationOptions>(configuration.GetSection("Authentication"));
+
+        services.ConfigureOptions<JwtBearerOptionsSetup>();
+
+        services.Configure<KeycloakOptions>(configuration.GetSection("Keycloak"));
+
+        services.AddTransient<AdminAuthorisationDelegatingHandler>();
+
+        services.AddHttpClient<IAuthenticationService, AuthenticationService>((serviceProvider, httpClient) =>
+        {
+            var keyCloakOptions = serviceProvider.GetRequiredService<IOptions<KeycloakOptions>>().Value;
+            httpClient.BaseAddress = new Uri(keyCloakOptions.AdminUrl);
+        }).AddHttpMessageHandler<AdminAuthorisationDelegatingHandler>();
+
+        services.AddHttpClient<IJwtService, JwtService>((serviceProvider, httpClient) =>
+        {
+            KeycloakOptions keycloakOptions = serviceProvider.GetRequiredService<IOptions<KeycloakOptions>>().Value;
+
+            httpClient.BaseAddress = new Uri(keycloakOptions.TokenUrl);
+        });
+
+        services.AddHttpContextAccessor();
+
+        services.AddScoped<IUserContext, UserContext>();
+    }
+
+    private static void AddAuthorisation(IServiceCollection services)
+    {
+        services.AddScoped<AuthorisationService>();
+
+        services.AddTransient<IClaimsTransformation, CustomClaimsTransformation>();
+
+        services.AddTransient<IAuthorizationHandler, PermissionAuthorisationHandler>();
+
+        services.AddTransient<IAuthorizationPolicyProvider, PermissionAuthorisationPolicyProvider>();
     }
 }
